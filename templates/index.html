@@ -1,0 +1,1192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>NC SHELL v2.0.77 // PENTEST FRAMEWORK</title>
+
+<!-- Google Fonts: Source Code Pro Bold (matches reference image terminal aesthetic) -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@700&display=swap" />
+
+<!-- xterm.js -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+
+<!-- Socket.IO -->
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+
+<style>
+/* ── Reset & Base ─────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #0a0c0f;
+  --bg2:       #0d1117;
+  --bg3:       #111820;
+  --border:    #1a2535;
+  --cyan:      #00e5ff;
+  --cyan-dim:  #007a8a;
+  --red:       #ff2d55;
+  --red-dim:   #8b1a2a;
+  --yellow:    #ffd600;
+  --green:     #00ff88;
+  --grey:      #4a5568;
+  --grey-dim:  #2d3748;
+  --white:     #e2e8f0;
+  --font:      'Source Code Pro', 'Cascadia Code', 'Cascadia Mono', 'Fira Code', 'Microsoft YaHei', '微软雅黑', 'PingFang SC', 'Heiti SC', 'Courier New', Courier, monospace;
+}
+
+html, body {
+  width: 100%; height: 100%;
+  background: var(--bg);
+  color: var(--white);
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 700;
+  overflow: hidden;
+  /* 移除全局 user-select:none，允许用户选中文本（Bug 3） */
+  user-select: auto;
+}
+
+/* ── Global Font Override: Source Code Pro Bold ───────── */
+/* 强制覆盖所有 UI 元素，包括 input、button、label、code 等 */
+*, *::before, *::after {
+  font-family: var(--font) !important;
+  font-weight: 700 !important;
+}
+
+/* xterm.js canvas 字体同步 */
+.xterm-rows, .xterm-rows span,
+.xterm .xterm-screen canvas {
+  font-family: var(--font) !important;
+  font-weight: 700 !important;
+}
+
+/* Scanline overlay */
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 2px,
+    rgba(0,0,0,0.08) 2px,
+    rgba(0,0,0,0.08) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* ── Layout ───────────────────────────────────────────── */
+#app {
+  display: grid;
+  grid-template-rows: 42px 1fr;
+  grid-template-columns: 220px 1fr 340px;
+  height: 100vh;
+  gap: 0;
+}
+
+/* ── Top Nav ──────────────────────────────────────────── */
+#topnav {
+  grid-column: 1 / -1;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  gap: 18px;
+}
+
+.nav-brand {
+  display: flex; align-items: center; gap: 8px;
+  flex-shrink: 0;
+}
+.nav-brand .reticle {
+  width: 20px; height: 20px;
+  border: 2px solid var(--red);
+  border-radius: 50%;
+  position: relative;
+  flex-shrink: 0;
+}
+.nav-brand .reticle::before,
+.nav-brand .reticle::after {
+  content: '';
+  position: absolute;
+  background: var(--red);
+}
+.nav-brand .reticle::before { width: 2px; height: 8px; top: 50%; left: 50%; transform: translate(-50%,-50%); }
+.nav-brand .reticle::after  { width: 8px; height: 2px; top: 50%; left: 50%; transform: translate(-50%,-50%); }
+
+.nav-brand .logo-text { color: var(--red); font-size: 15px; font-weight: bold; letter-spacing: 2px; }
+.nav-brand .version   { color: var(--cyan); font-size: 11px; letter-spacing: 1px; }
+
+.nav-divider { width: 1px; height: 24px; background: var(--border); flex-shrink: 0; }
+
+.nav-session {
+  display: flex; align-items: center; gap: 8px;
+  flex-shrink: 0;
+}
+.nav-session .sess-btn {
+  background: transparent;
+  border: 1px solid var(--cyan-dim);
+  color: var(--cyan);
+  padding: 3px 10px;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+.nav-session .sess-btn:hover { background: rgba(0,229,255,0.08); }
+.nav-session .sess-label { color: var(--cyan); font-size: 12px; }
+.nav-session .prompt { color: var(--cyan); font-size: 13px; }
+
+.nav-right {
+  margin-left: auto;
+  display: flex; align-items: center; gap: 10px;
+  flex-shrink: 0;
+}
+.leds { display: flex; gap: 5px; align-items: center; }
+.led {
+  width: 8px; height: 8px; border-radius: 50%;
+}
+.led-red    { background: var(--red); box-shadow: 0 0 4px var(--red); }
+.led-yellow { background: var(--yellow); box-shadow: 0 0 4px var(--yellow); }
+.led-green  { background: var(--green); box-shadow: 0 0 4px var(--green); }
+.led-off    { background: var(--grey); box-shadow: none; }
+
+.ws-status { font-size: 12px; }
+.ws-status.offline { color: var(--red); }
+.ws-status.online  { color: var(--green); }
+
+.srv-label { color: var(--cyan); font-size: 12px; }
+.clock     { color: var(--cyan); font-size: 12px; }
+
+/* ── Left Sidebar ─────────────────────────────────────── */
+#sidebar-left {
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-section {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar-title {
+  color: var(--red-dim);
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.field-row {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 8px;
+}
+.field-label {
+  color: var(--cyan);
+  font-size: 11px;
+  letter-spacing: 1px;
+  flex-shrink: 0;
+}
+.field-input {
+  background: var(--bg3);
+  border: 1px solid var(--cyan-dim);
+  color: var(--cyan);
+  font-family: var(--font);
+  font-size: 12px;
+  padding: 4px 8px;
+  width: 100%;
+  outline: none;
+}
+.field-input:focus { border-color: var(--cyan); box-shadow: 0 0 6px rgba(0,229,255,0.2); }
+
+.checkbox-row {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 12px;
+  cursor: pointer;
+}
+.checkbox-row input[type=checkbox] {
+  accent-color: var(--cyan);
+  width: 14px; height: 14px;
+  cursor: pointer;
+}
+.checkbox-row label {
+  color: var(--cyan);
+  font-size: 11px;
+  letter-spacing: 1px;
+  cursor: pointer;
+}
+
+.btn-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.btn-action {
+  background: var(--bg3);
+  border: 1px solid var(--red-dim);
+  color: var(--red-dim);
+  font-family: var(--font);
+  font-size: 12px;
+  padding: 7px 4px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  transition: all 0.15s;
+  letter-spacing: 1px;
+}
+.btn-action:hover {
+  border-color: var(--red);
+  color: var(--red);
+  background: rgba(255,45,85,0.08);
+  box-shadow: 0 0 8px rgba(255,45,85,0.2);
+}
+.btn-action .icon { font-size: 14px; }
+
+/* Toggle button: “停止”状态样式 */
+.btn-action.btn-stop {
+  border-color: var(--cyan-dim);
+  color: var(--cyan);
+  background: rgba(0,229,255,0.06);
+}
+.btn-action.btn-stop:hover {
+  border-color: var(--cyan);
+  color: var(--cyan);
+  background: rgba(0,229,255,0.12);
+  box-shadow: 0 0 8px rgba(0,229,255,0.25);
+}
+.btn-action.btn-stop .icon { color: var(--cyan) !important; }
+
+/* Sessions list */
+#sessions-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 14px;
+}
+#sessions-list::-webkit-scrollbar { width: 4px; }
+#sessions-list::-webkit-scrollbar-track { background: var(--bg2); }
+#sessions-list::-webkit-scrollbar-thumb { background: var(--border); }
+
+.no-sessions {
+  color: var(--grey);
+  font-size: 12px;
+  text-align: center;
+  margin-top: 16px;
+  line-height: 1.8;
+}
+.no-sessions small { font-size: 11px; color: var(--grey-dim); }
+
+.session-item {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.session-item:hover, .session-item.active {
+  border-color: var(--cyan-dim);
+  background: rgba(0,229,255,0.05);
+}
+.session-item.active { border-color: var(--cyan); }
+.session-port { color: var(--cyan); font-size: 12px; font-weight: bold; }
+.session-status {
+  font-size: 10px;
+  color: var(--green);
+  letter-spacing: 1px;
+}
+.session-stop {
+  background: none; border: none;
+  color: var(--red-dim); cursor: pointer;
+  font-size: 14px; padding: 0 2px;
+  transition: color 0.15s;
+}
+.session-stop:hover { color: var(--red); }
+
+/* ── Main Terminal ────────────────────────────────────── */
+#main-panel {
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.terminal-header {
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12px;
+  flex-shrink: 0;
+}
+.terminal-title { color: var(--cyan); font-size: 12px; letter-spacing: 2px; }
+.terminal-port-badge {
+  background: rgba(0,229,255,0.1);
+  border: 1px solid var(--cyan-dim);
+  color: var(--cyan);
+  font-size: 10px;
+  padding: 2px 8px;
+  letter-spacing: 1px;
+}
+
+/* Idle splash */
+#terminal-idle {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 16px;
+  background: var(--bg);
+  z-index: 10;
+}
+#terminal-idle.hidden { display: none; }
+
+.nc-ascii {
+  font-family: var(--font);
+  color: var(--cyan);
+  font-size: 13px;
+  line-height: 1.2;
+  text-align: center;
+  text-shadow: 0 0 10px var(--cyan), 0 0 20px rgba(0,229,255,0.3);
+  white-space: pre;
+}
+
+.idle-wait { color: var(--cyan); font-size: 13px; letter-spacing: 2px; }
+
+.idle-hints { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.idle-hint {
+  font-size: 12px;
+  display: flex; gap: 8px;
+}
+.hint-bang { color: var(--yellow); }
+.hint-text { color: var(--cyan); }
+.hint-text.grey { color: var(--yellow); }
+
+/* xterm container - Bug 1: 确保终端严格左对齐 */
+#xterm-container {
+  flex: 1;
+  overflow: hidden;
+  padding: 0;          /* 移除 padding ，避免 xterm 内部对齐偏移 */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;  /* 左对齐 */
+}
+#xterm-container .xterm {
+  height: 100%;
+  width: 100%;
+  text-align: left;    /* 强制左对齐 */
+}
+/* xterm 内部 viewport 和 rows 左对齐 */
+#xterm-container .xterm-viewport,
+#xterm-container .xterm-screen {
+  text-align: left !important;
+}
+#xterm-container .xterm-rows {
+  text-align: left !important;
+  margin-left: 0 !important;
+  padding-left: 4px;   /* 保留少量左边距，避免文字贴边 */
+}
+
+/* ── Right Sidebar ────────────────────────────────────── */
+#sidebar-right {
+  background: var(--bg2);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.tab-btn {
+  flex: 1;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--grey);
+  font-family: var(--font);
+  font-size: 11px;
+  letter-spacing: 2px;
+  padding: 10px 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.tab-btn.active {
+  color: var(--red);
+  border-bottom-color: var(--red);
+}
+.tab-btn:hover:not(.active) { color: var(--white); }
+
+.tab-content { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+.tab-content.active { display: flex; }
+
+/* Payload type buttons */
+.payload-types {
+  padding: 10px 12px 6px;
+  display: flex; flex-wrap: wrap; gap: 5px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.payload-type-btn {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--grey);
+  font-family: var(--font);
+  font-size: 10px;
+  padding: 4px 8px;
+  cursor: pointer;
+  letter-spacing: 1px;
+  transition: all 0.15s;
+}
+.payload-type-btn:hover { border-color: var(--grey); color: var(--white); }
+.payload-type-btn.active {
+  background: rgba(0,255,136,0.1);
+  border-color: var(--green);
+  color: var(--green);
+}
+
+/* Payload config row */
+.payload-config {
+  padding: 8px 12px;
+  display: flex; gap: 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.payload-config .field-input { font-size: 11px; padding: 3px 6px; }
+
+/* Payload display - Bug 3: 全区域允许文本选中 */
+.payload-display {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  user-select: text;
+  cursor: default;
+}
+.payload-display::-webkit-scrollbar { width: 4px; }
+.payload-display::-webkit-scrollbar-track { background: var(--bg2); }
+.payload-display::-webkit-scrollbar-thumb { background: var(--border); }
+
+.payload-block {
+  margin-bottom: 16px;
+}
+.payload-block-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 6px;
+}
+.payload-block-title { color: var(--red); font-size: 11px; letter-spacing: 2px; }
+.copy-btn {
+  background: none; border: none;
+  color: var(--grey); cursor: pointer;
+  font-size: 14px; padding: 0 4px;
+  transition: color 0.15s;
+}
+.copy-btn:hover { color: var(--cyan); }
+.copy-btn.copied { color: var(--green); }
+
+.code-block {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.7;
+  word-break: break-all;
+  overflow-x: auto;
+  margin-bottom: 4px;
+  position: relative;
+  white-space: pre-wrap;
+  /* Bug 3: 允许鼠标选中文本 */
+  user-select: text;
+  cursor: text;
+}
+.code-or { color: var(--grey); font-size: 11px; margin: 4px 0; }
+
+/* Syntax highlight classes */
+.sh-cmd  { color: var(--green); }
+.sh-flag { color: var(--yellow); }
+.sh-val  { color: var(--cyan); }
+.sh-cmt  { color: var(--grey); }
+.sh-ctrl { color: var(--red); }
+
+/* TTY Upgrade block */
+.tty-block {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  padding: 10px;
+  font-size: 11px;
+  line-height: 1.9;
+  overflow-x: auto;
+  /* Bug 3: 允许鼠标选中文本 */
+  user-select: text;
+  cursor: text;
+}
+.tty-line { margin-bottom: 4px; }
+.tty-cmd  { color: var(--green); display: block; word-break: break-all; user-select: text; }
+.tty-cmt  { color: var(--grey); font-size: 10px; display: block; padding-left: 2px; user-select: text; }
+
+/* Guide tab */
+.guide-content {
+  flex: 1; overflow-y: auto; padding: 14px 12px;
+  color: var(--grey);
+  font-size: 11px;
+  line-height: 1.8;
+}
+.guide-content::-webkit-scrollbar { width: 4px; }
+.guide-content::-webkit-scrollbar-track { background: var(--bg2); }
+.guide-content::-webkit-scrollbar-thumb { background: var(--border); }
+.guide-content h3 { color: var(--cyan); font-size: 12px; letter-spacing: 2px; margin-bottom: 8px; margin-top: 14px; }
+.guide-content p  { margin-bottom: 8px; }
+.guide-content code { color: var(--green); background: var(--bg3); padding: 1px 4px; }
+.guide-content .warn { color: var(--yellow); }
+
+/* ── Utility ──────────────────────────────────────────── */
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Top Nav ── -->
+  <nav id="topnav">
+    <div class="nav-brand">
+      <div class="reticle"></div>
+      <span class="logo-text">NC SHELL</span>
+      <span class="version">v2.0.77 // PENTEST FRAMEWORK</span>
+    </div>
+
+    <div class="nav-divider"></div>
+
+    <div class="nav-session">
+      <button class="sess-btn">[ Sessions ]</button>
+      <span class="prompt">&gt;_</span>
+      <span class="sess-label" id="nav-session-label">未选择会话</span>
+    </div>
+
+    <div class="nav-right">
+      <div class="leds">
+        <div class="led led-red"    id="led-r"></div>
+        <div class="led led-yellow" id="led-y"></div>
+        <div class="led led-off"    id="led-g"></div>
+      </div>
+      <span class="ws-status offline" id="ws-status-text">WS:OFFLINE</span>
+      <span class="srv-label">SRV: 0.0.0.0</span>
+      <span class="clock" id="clock">2026-04-09 00:00:00</span>
+      <span style="color:var(--grey);font-size:14px;cursor:pointer;">⚙</span>
+    </div>
+  </nav>
+
+  <!-- ── Left Sidebar ── -->
+  <aside id="sidebar-left">
+    <div class="sidebar-section">
+      <div class="sidebar-title">新建监听器</div>
+
+      <div class="field-row">
+        <span class="field-label">PORT</span>
+        <input type="number" class="field-input" id="input-port" value="4444" min="1" max="65535" />
+      </div>
+
+      <div class="checkbox-row">
+        <input type="checkbox" id="chk-autotty" checked />
+        <label for="chk-autotty">AUTO TTY UPGRADE</label>
+      </div>
+
+      <div class="btn-row" style="grid-template-columns:1fr">
+        <button class="btn-action" id="btn-toggle" title="启动监听器">
+          <span class="icon" id="btn-toggle-icon" style="color:var(--red)">▶</span>
+          <span id="btn-toggle-text">启动</span>
+        </button>
+      </div>
+    </div>
+
+    <div id="sessions-list">
+      <div class="no-sessions" id="no-sessions-msg">
+        无活跃会话<br/>
+        <small>请先创建一个监听器</small>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── Main Terminal ── -->
+  <main id="main-panel">
+    <div class="terminal-header">
+      <span class="terminal-title">NC SHELL TERMINAL v2.0.77</span>
+      <span class="terminal-port-badge" id="terminal-port-badge" style="display:none"></span>
+    </div>
+
+    <!-- Idle splash -->
+    <div id="terminal-idle">
+      <div class="nc-ascii">
+╔═══════════════════════════════╗
+║                               ║
+║    ███╗   ██╗ ██████╗         ║
+║    ████╗  ██║██╔════╝         ║
+║    ██╔██╗ ██║██║              ║
+║    ██║╚██╗██║██║              ║
+║    ██║ ╚████║╚██████╗         ║
+║    ╚═╝  ╚═══╝ ╚═════╝         ║
+║                               ║
+╚═══════════════════════════════╝</div>
+      <div class="idle-wait">等待反弹 Shell 连接...</div>
+      <div class="idle-hints">
+        <div class="idle-hint">
+          <span class="hint-bang">[ ! ]</span>
+          <span class="hint-text">请在左侧面板选择或创建一个会话</span>
+        </div>
+        <div class="idle-hint">
+          <span class="hint-bang">[ ! ]</span>
+          <span class="hint-text">启动监听后，在目标机器上执行反弹 Shell Payload</span>
+        </div>
+        <div class="idle-hint">
+          <span class="hint-bang">[ ! ]</span>
+          <span class="hint-text grey">未选择会话</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- xterm.js container -->
+    <div id="xterm-container"></div>
+  </main>
+
+  <!-- ── Right Sidebar ── -->
+  <aside id="sidebar-right">
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="payloads">PAYLOADS</button>
+      <button class="tab-btn" data-tab="guide">使用指南</button>
+    </div>
+
+    <!-- Payloads Tab -->
+    <div class="tab-content active" id="tab-payloads">
+      <div class="payload-types" id="payload-type-btns"></div>
+
+      <div class="payload-config">
+        <input type="text" class="field-input" id="payload-ip" placeholder="LHOST" value="0.0.0.0" style="flex:1" />
+        <input type="number" class="field-input" id="payload-port" placeholder="LPORT" value="4444" style="width:70px" />
+      </div>
+
+      <div class="payload-display" id="payload-display">
+        <!-- Rendered by JS -->
+      </div>
+    </div>
+
+    <!-- Guide Tab -->
+    <div class="tab-content" id="tab-guide">
+      <div class="guide-content">
+        <h3>// ABOUT</h3>
+        <p>NC Shell v2.0.77 是一个轻量级的云端渗透测试框架，提供基于 Web 的反弹 Shell 管理界面，无需本地安装任何客户端。</p>
+
+        <h3>// 快速开始</h3>
+        <p>1. 在左侧面板输入监听端口（默认 4444），点击 <code>启动</code>。</p>
+        <p>2. 在右侧 PAYLOADS 面板填写你的 <code>LHOST</code> 和 <code>LPORT</code>，选择适合目标系统的 Payload 类型并复制。</p>
+        <p>3. 在目标机器上执行 Payload，连接建立后终端将自动激活。</p>
+
+        <h3>// AUTO TTY UPGRADE</h3>
+        <p>勾选 <code>AUTO TTY UPGRADE</code> 后，框架会在检测到连接建立时自动向目标注入 TTY 升级序列，将哑 Shell 升级为全功能交互式终端，支持 Tab 补全、方向键历史、Ctrl+C 等操作。</p>
+        <p class="warn">[ ! ] 升级序列依赖目标系统已安装 python3，若无法升级请手动执行。</p>
+
+        <h3>// TTY 升级序列</h3>
+        <p>
+          <code>python3 -c 'import pty; pty.spawn("/bin/bash")'</code> — 远端伪终端<br/>
+          <code>export TERM=xterm-256color</code> — 设置终端类型<br/>
+          <code>stty sane</code> — 重置行规程（确保 echo 和 \n→\r\n）<br/>
+          <code>stty rows N cols M</code> — 同步终端尺寸（自动从 xterm.js 获取）
+        </p>
+        <p class="warn">[ ! ] Web 架构下 nc 是 subprocess（PIPE），不需要 Ctrl+Z / stty raw -echo / fg 流程。</p>
+
+        <h3>// 注意事项</h3>
+        <p class="warn">[ ! ] 本工具仅供授权渗透测试和安全研究使用。</p>
+        <p class="warn">[ ! ] 请确保在合法授权的环境中使用，遵守相关法律法规。</p>
+        <p>后端使用纯 Python + Flask + Flask-SocketIO 实现，无任何第三方中间件，所有会话状态在单节点内存中管理。</p>
+      </div>
+    </div>
+  </aside>
+
+</div><!-- #app -->
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  NC Shell Frontend v2.1.0
+// ═══════════════════════════════════════════════════════
+
+// ── LocalStorage Key ─────────────────────────────────
+const LS_KEY = 'ncs_ui_state';
+
+function saveUiState() {
+  const state = {
+    port:        document.getElementById('input-port').value,
+    autoTty:     document.getElementById('chk-autotty').checked,
+    payloadTab:  currentPayloadType,
+    payloadIp:   document.getElementById('payload-ip').value,
+    payloadPort: document.getElementById('payload-port').value,
+  };
+  try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch(e) {}
+}
+
+function loadUiState() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch(e) { return null; }
+}
+
+// ── Clock ─────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  document.getElementById('clock').textContent =
+    `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ` +
+    `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+}
+updateClock();
+setInterval(updateClock, 1000);
+
+// ── Socket.IO ─────────────────────────────────────────
+const socket = io({ transports: ['websocket', 'polling'] });
+
+const wsStatusEl = document.getElementById('ws-status-text');
+const ledG       = document.getElementById('led-g');
+
+socket.on('connect', () => {
+  wsStatusEl.textContent = 'WS:ONLINE';
+  wsStatusEl.className   = 'ws-status online';
+  ledG.className         = 'led led-green';
+  console.log('[WS] Connected');
+});
+
+socket.on('disconnect', () => {
+  wsStatusEl.textContent = 'WS:OFFLINE';
+  wsStatusEl.className   = 'ws-status offline';
+  ledG.className         = 'led led-off';
+  console.log('[WS] Disconnected');
+});
+
+// Terminal output from server
+socket.on('terminal_output', ({ port, data }) => {
+  if (activePort === Number(port) && term) {
+    term.write(data);
+  }
+});
+
+// Server notifies a listener stopped
+socket.on('listener_stopped', ({ port }) => {
+  const p = Number(port);
+  removeSessionItem(p);
+  if (activePort === p) {
+    setActivePort(null);
+  }
+  // 同步按钮状态机
+  updateToggleButton();
+});
+
+// ── xterm.js ──────────────────────────────────────────
+let term = null;
+let fitAddon = null;
+
+function initTerminal() {
+  if (term) { term.dispose(); }
+
+  term = new Terminal({
+    theme: {
+      background:  '#0a0c0f',
+      foreground:  '#e2e8f0',
+      cursor:      '#00e5ff',
+      cursorAccent:'#0a0c0f',
+      black:       '#0a0c0f',
+      cyan:        '#00e5ff',
+      green:       '#00ff88',
+      yellow:      '#ffd600',
+      red:         '#ff2d55',
+    },
+    fontFamily: "'Source Code Pro', 'Cascadia Code', 'Cascadia Mono', 'Fira Code', 'Courier New', Courier, monospace",
+    fontWeight: 'bold',
+    fontWeightBold: 'bold',
+    fontSize: 13,
+    lineHeight: 1.4,
+    letterSpacing: 0,
+    cursorBlink: true,
+    cursorStyle: 'block',
+    allowTransparency: false,
+    scrollback: 5000,
+    disableStdin: false,
+    rightClickSelectsWord: false,
+  });
+
+  fitAddon = new FitAddon.FitAddon();
+  term.loadAddon(fitAddon);
+
+  const container = document.getElementById('xterm-container');
+  term.open(container);
+  fitAddon.fit();
+
+  term.onData(data => {
+    if (activePort !== null) {
+      socket.emit('terminal_input', { port: activePort, data });
+    }
+  });
+
+  window.addEventListener('resize', () => {
+    if (fitAddon) fitAddon.fit();
+  });
+}
+
+// ── Session / Port Management ─────────────────────────
+let activePort = null;
+const sessionPorts = new Set();
+
+function setActivePort(port) {
+  activePort = port === null ? null : Number(port);
+  const badge = document.getElementById('terminal-port-badge');
+  const label = document.getElementById('nav-session-label');
+  const idle  = document.getElementById('terminal-idle');
+
+  if (activePort === null) {
+    badge.style.display = 'none';
+    label.textContent   = '未选择会话';
+    idle.classList.remove('hidden');
+  } else {
+    badge.textContent   = `PORT: ${activePort}`;
+    badge.style.display = '';
+    label.textContent   = `PORT ${activePort}`;
+    idle.classList.add('hidden');
+    if (term) term.focus();
+  }
+
+  document.querySelectorAll('.session-item').forEach(el => {
+    el.classList.toggle('active', Number(el.dataset.port) === activePort);
+  });
+
+  // 同步按钮状态机
+  updateToggleButton();
+}
+
+function addSessionItem(port) {
+  port = Number(port);
+  if (sessionPorts.has(port)) return;
+  sessionPorts.add(port);
+
+  const noMsg = document.getElementById('no-sessions-msg');
+  if (noMsg) noMsg.remove();
+
+  const list = document.getElementById('sessions-list');
+  const item = document.createElement('div');
+  item.className    = 'session-item';
+  item.dataset.port = port;
+  item.innerHTML    = `
+    <div>
+      <div class="session-port">:${port}</div>
+      <div class="session-status">● LISTENING</div>
+    </div>
+  `;
+
+  item.addEventListener('click', e => {
+    setActivePort(Number(item.dataset.port));
+  });
+
+  list.appendChild(item);
+  setActivePort(port);
+}
+
+function removeSessionItem(port) {
+  port = Number(port);
+  sessionPorts.delete(port);
+  const el = document.querySelector(`.session-item[data-port="${port}"]`);
+  if (el) el.remove();
+
+  if (sessionPorts.size === 0) {
+    const list = document.getElementById('sessions-list');
+    list.innerHTML = `
+      <div class="no-sessions" id="no-sessions-msg">
+        无活跃会话<br/><small>请先启动一个监听器</small>
+      </div>`;
+  }
+}
+
+// ── Toggle Button State Machine ─────────────────────
+const btnToggle     = document.getElementById('btn-toggle');
+const btnToggleIcon = document.getElementById('btn-toggle-icon');
+const btnToggleText = document.getElementById('btn-toggle-text');
+
+// 状态判断：当前输入框的端口是否已在监听中
+function isCurrentPortListening() {
+  const port = parseInt(document.getElementById('input-port').value);
+  return port && sessionPorts.has(port);
+}
+
+function updateToggleButton() {
+  if (isCurrentPortListening()) {
+    // 切换到“停止”状态
+    btnToggle.classList.add('btn-stop');
+    btnToggle.title       = '停止监听器';
+    btnToggleIcon.textContent = '⬛';
+    btnToggleText.textContent = '停止';
+  } else {
+    // 切换到“启动”状态
+    btnToggle.classList.remove('btn-stop');
+    btnToggle.title       = '启动监听器';
+    btnToggleIcon.textContent = '▶';
+    btnToggleText.textContent = '启动';
+  }
+}
+
+// ── Listener API ──────────────────────────────────────
+async function startListener(port, autoTty) {
+  // 获取 xterm.js 实际行列数，传给后端用于 stty rows/cols
+  const termRows = term ? term.rows : 24;
+  const termCols = term ? term.cols : 80;
+  try {
+    const res = await fetch('/api/listeners/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ port, auto_tty: autoTty, rows: termRows, cols: termCols }),
+    });
+    const json = await res.json();
+    if (json.status === 'success') {
+      addSessionItem(port);
+      if (term) {
+        term.write(`\x1b[32m[+] Listener started on port ${port}\x1b[0m\r\n`);
+        if (autoTty) {
+          term.write(`\x1b[33m[*] AUTO TTY UPGRADE is enabled\x1b[0m\r\n`);
+        }
+      }
+      updateToggleButton();
+    } else {
+      alert(`Error: ${json.message}`);
+    }
+  } catch (err) {
+    alert(`Network error: ${err}`);
+  }
+}
+
+async function stopListener(port) {
+  port = Number(port);
+  try {
+    const res = await fetch('/api/listeners/stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ port }),
+    });
+    const json = await res.json();
+    removeSessionItem(port);
+    if (activePort === port) setActivePort(null);
+    if (term) {
+      term.clear();
+      term.write(`\x1b[31m[-] Listener on port ${port} stopped\x1b[0m\r\n`);
+    }
+    updateToggleButton();
+  } catch (err) {
+    alert(`Network error: ${err}`);
+  }
+}
+
+// ── Toggle Button Handler ────────────────────────────
+btnToggle.addEventListener('click', () => {
+  const port = parseInt(document.getElementById('input-port').value);
+  if (!port || port < 1 || port > 65535) {
+    alert('请输入有效端口号 (1-65535)');
+    return;
+  }
+
+  if (isCurrentPortListening()) {
+    // 当前是“停止”状态 → 停止监听器
+    stopListener(port);
+  } else {
+    // 当前是“启动”状态 → 启动监听器
+    const autoTty = document.getElementById('chk-autotty').checked;
+    startListener(port, autoTty);
+  }
+});
+
+// 当端口输入框变化时，同步按钮状态
+document.getElementById('input-port').addEventListener('input', function() {
+  document.getElementById('payload-port').value = this.value;
+  fetchPayloads();
+  updateToggleButton();
+  saveUiState();
+});
+
+// AUTO TTY 变化时保存
+document.getElementById('chk-autotty').addEventListener('change', saveUiState);
+
+// ── Tabs ──────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+  });
+});
+
+// ── Payloads ──────────────────────────────────────────
+const PAYLOAD_TYPES = [
+  'BASH', 'BASH /DEV/TCP', 'NC', 'PYTHON',
+  'PYTHON3', 'PERL', 'PHP', 'RUBY', 'SOCAT', 'PWSH'
+];
+
+let currentPayloadType = 'BASH';
+let payloadData = {};
+
+function renderPayloadTypeButtons() {
+  const container = document.getElementById('payload-type-btns');
+  container.innerHTML = '';
+  PAYLOAD_TYPES.forEach(type => {
+    const btn = document.createElement('button');
+    btn.className = 'payload-type-btn' + (type === currentPayloadType ? ' active' : '');
+    btn.textContent = type;
+    btn.addEventListener('click', () => {
+      currentPayloadType = type;
+      renderPayloadTypeButtons();
+      renderPayloadDisplay();
+      saveUiState();
+    });
+    container.appendChild(btn);
+  });
+}
+
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function syntaxHighlight(code) {
+  return `<span class="sh-cmd">${escapeHtml(code)}</span>`;
+}
+
+function renderPayloadDisplay() {
+  const display = document.getElementById('payload-display');
+  const info = payloadData[currentPayloadType];
+
+  if (!info) {
+    display.innerHTML = '<div style="color:var(--grey);font-size:12px;padding:8px;">加载中...</div>';
+    return;
+  }
+
+  let html = '';
+
+  html += `<div class="payload-block">`;
+  html += `<div class="payload-block-header">
+    <span class="payload-block-title">${escapeHtml(info.title)}</span>
+    <button class="copy-btn" title="复制" data-copy="${escapeHtml(info.codes.join('\n'))}">&#x29C9;</button>
+  </div>`;
+
+  info.codes.forEach((code, i) => {
+    if (i > 0) html += `<div class="code-or"># OR</div>`;
+    html += `<div class="code-block">${syntaxHighlight(code)}</div>`;
+  });
+  html += `</div>`;
+
+  const ttySteps = [
+    { cmd: "python3 -c 'import pty; pty.spawn(\"/bin/bash\")'" , cmt: '// 远端 PTY (remote pseudo-terminal)' },
+    { cmd: 'export TERM=xterm-256color',                          cmt: '// 设置终端类型 (set terminal type)' },
+    { cmd: 'stty sane',                                           cmt: '// 重置行规程 (reset line discipline)' },
+    { cmd: `stty rows ${term ? term.rows : 24} cols ${term ? term.cols : 80}`, cmt: '// 同步终端尺寸 (sync dimensions)' },
+  ];
+  const ttyRaw = ttySteps.map(s => s.cmd).join('\n');
+
+  html += `<div class="payload-block">`;
+  html += `<div class="payload-block-header">
+    <span class="payload-block-title">AUTO TTY UPGRADE SEQUENCE</span>
+    <button class="copy-btn" title="复制" data-copy="${escapeHtml(ttyRaw)}">&#x29C9;</button>
+  </div>`;
+  html += `<div class="tty-block">`;
+  ttySteps.forEach(step => {
+    html += `<div class="tty-line">
+      <span class="tty-cmd">${escapeHtml(step.cmd)}</span>
+      <span class="tty-cmt">${escapeHtml(step.cmt)}</span>
+    </div>`;
+  });
+  html += `</div></div>`;
+
+  display.innerHTML = html;
+
+  display.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      navigator.clipboard.writeText(btn.dataset.copy).then(() => {
+        btn.classList.add('copied');
+        btn.textContent = '✓';
+        setTimeout(() => { btn.classList.remove('copied'); btn.textContent = '⧉'; }, 1500);
+      });
+    });
+  });
+}
+
+async function fetchPayloads() {
+  const ip   = document.getElementById('payload-ip').value   || '0.0.0.0';
+  const port = document.getElementById('payload-port').value || '4444';
+  try {
+    const res  = await fetch(`/api/payloads?ip=${encodeURIComponent(ip)}&port=${encodeURIComponent(port)}`);
+    const json = await res.json();
+    if (json.status === 'success') {
+      payloadData = json.data;
+      renderPayloadDisplay();
+    }
+  } catch (e) {
+    console.error('Failed to fetch payloads:', e);
+  }
+}
+
+// Payload IP/Port 变化时保存 + 重新获取
+document.getElementById('payload-ip').addEventListener('input', () => { fetchPayloads(); saveUiState(); });
+document.getElementById('payload-port').addEventListener('input', () => { fetchPayloads(); saveUiState(); });
+
+// ── Backend Re-sync on Page Load ────────────────────
+async function syncFromBackend() {
+  try {
+    const res  = await fetch('/api/status');
+    const json = await res.json();
+    if (json.status === 'success' && json.listeners.length > 0) {
+      json.listeners.forEach(li => {
+        addSessionItem(li.port);
+      });
+      // 自动激活第一个监听器
+      setActivePort(json.listeners[0].port);
+      if (term) {
+        term.write(`\x1b[33m[*] Reconnected — ${json.listeners.length} active listener(s) recovered.\x1b[0m\r\n`);
+      }
+    }
+  } catch (e) {
+    console.error('[Resync] Failed:', e);
+  }
+}
+
+// ── Init ──────────────────────────────────────────────
+(function init() {
+  // 1) 恢复 LocalStorage 状态
+  const saved = loadUiState();
+  if (saved) {
+    if (saved.port)        document.getElementById('input-port').value   = saved.port;
+    if (saved.autoTty !== undefined) document.getElementById('chk-autotty').checked = saved.autoTty;
+    if (saved.payloadIp)   document.getElementById('payload-ip').value   = saved.payloadIp;
+    if (saved.payloadPort) document.getElementById('payload-port').value = saved.payloadPort;
+    if (saved.payloadTab && PAYLOAD_TYPES.includes(saved.payloadTab)) {
+      currentPayloadType = saved.payloadTab;
+    }
+  }
+
+  // 2) 初始化终端
+  initTerminal();
+
+  // 3) 渲染 Payload 面板
+  renderPayloadTypeButtons();
+  fetchPayloads();
+
+  // 4) 从后端重新同步活跃监听器
+  syncFromBackend();
+
+  // 5) 初始化按钮状态
+  updateToggleButton();
+})();
+</script>
+</body>
+</html>
