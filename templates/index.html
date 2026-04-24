@@ -82,12 +82,18 @@ body::after {
 
 /* ── Layout ───────────────────────────────────────────── */
 #app {
+  --left-w: 220px;
+  --right-w: 340px;
   display: grid;
   grid-template-rows: 42px 1fr;
-  grid-template-columns: 220px 1fr 340px;
+  grid-template-columns: var(--left-w) 1fr var(--right-w);
   height: 100vh;
   gap: 0;
+  transition: grid-template-columns 0.2s ease;
 }
+
+#app.left-collapsed { --left-w: 0px; }
+#app.right-collapsed { --right-w: 0px; }
 
 /* ── Top Nav ──────────────────────────────────────────── */
 #topnav {
@@ -171,6 +177,14 @@ body::after {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-width: 0;
+  transition: opacity 0.2s ease, border-color 0.2s ease;
+}
+
+#app.left-collapsed #sidebar-left {
+  opacity: 0;
+  border-right-color: transparent;
+  pointer-events: none;
 }
 
 .sidebar-section {
@@ -400,6 +414,46 @@ body::after {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-width: 0;
+  transition: opacity 0.2s ease, border-color 0.2s ease;
+}
+
+#app.right-collapsed #sidebar-right {
+  opacity: 0;
+  border-left-color: transparent;
+  pointer-events: none;
+}
+
+.sidebar-toggle {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 20;
+  width: 20px;
+  height: 64px;
+  border: 1px solid var(--cyan-dim);
+  background: var(--bg2);
+  color: var(--cyan);
+  cursor: pointer;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+.sidebar-toggle:hover {
+  border-color: var(--cyan);
+  background: rgba(0,229,255,0.08);
+}
+.sidebar-toggle.left {
+  left: 0;
+  border-left: none;
+  border-radius: 0 10px 10px 0;
+}
+.sidebar-toggle.right {
+  right: 0;
+  border-right: none;
+  border-radius: 10px 0 0 10px;
 }
 
 .tabs {
@@ -616,6 +670,9 @@ body::after {
 
   <!-- ── Main Terminal ── -->
   <main id="main-panel">
+    <button class="sidebar-toggle left" id="btn-toggle-left-sidebar" title="折叠左侧栏" aria-label="折叠左侧栏">◀</button>
+    <button class="sidebar-toggle right" id="btn-toggle-right-sidebar" title="折叠右侧栏" aria-label="折叠右侧栏">▶</button>
+
     <div class="terminal-header">
       <span class="terminal-title">NC SHELL TERMINAL v2.0.77</span>
       <span class="terminal-port-badge" id="terminal-port-badge" style="display:none"></span>
@@ -719,12 +776,15 @@ body::after {
 const LS_KEY = 'ncs_ui_state';
 
 function saveUiState() {
+  const app = document.getElementById('app');
   const state = {
     port:        document.getElementById('input-port').value,
     autoTty:     document.getElementById('chk-autotty').checked,
     payloadTab:  currentPayloadType,
     payloadIp:   document.getElementById('payload-ip').value,
     payloadPort: document.getElementById('payload-port').value,
+    leftCollapsed: app.classList.contains('left-collapsed'),
+    rightCollapsed: app.classList.contains('right-collapsed'),
   };
   try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch(e) {}
 }
@@ -913,6 +973,9 @@ function removeSessionItem(port) {
 const btnToggle     = document.getElementById('btn-toggle');
 const btnToggleIcon = document.getElementById('btn-toggle-icon');
 const btnToggleText = document.getElementById('btn-toggle-text');
+const appEl = document.getElementById('app');
+const btnLeftSidebar = document.getElementById('btn-toggle-left-sidebar');
+const btnRightSidebar = document.getElementById('btn-toggle-right-sidebar');
 
 // 状态判断：当前输入框的端口是否已在监听中
 function isCurrentPortListening() {
@@ -935,6 +998,39 @@ function updateToggleButton() {
     btnToggleText.textContent = '启动';
   }
 }
+
+function updateSidebarToggleButtons() {
+  const leftCollapsed = appEl.classList.contains('left-collapsed');
+  const rightCollapsed = appEl.classList.contains('right-collapsed');
+
+  btnLeftSidebar.textContent = leftCollapsed ? '▶' : '◀';
+  btnLeftSidebar.title = leftCollapsed ? '展开左侧栏' : '折叠左侧栏';
+  btnLeftSidebar.setAttribute('aria-label', btnLeftSidebar.title);
+
+  btnRightSidebar.textContent = rightCollapsed ? '◀' : '▶';
+  btnRightSidebar.title = rightCollapsed ? '展开右侧栏' : '折叠右侧栏';
+  btnRightSidebar.setAttribute('aria-label', btnRightSidebar.title);
+}
+
+function fitTerminalSoon() {
+  setTimeout(() => {
+    if (fitAddon) fitAddon.fit();
+  }, 210);
+}
+
+btnLeftSidebar.addEventListener('click', () => {
+  appEl.classList.toggle('left-collapsed');
+  updateSidebarToggleButtons();
+  saveUiState();
+  fitTerminalSoon();
+});
+
+btnRightSidebar.addEventListener('click', () => {
+  appEl.classList.toggle('right-collapsed');
+  updateSidebarToggleButtons();
+  saveUiState();
+  fitTerminalSoon();
+});
 
 // ── Listener API ──────────────────────────────────────
 async function startListener(port, autoTty) {
@@ -1172,6 +1268,12 @@ async function syncFromBackend() {
     if (saved.payloadTab && PAYLOAD_TYPES.includes(saved.payloadTab)) {
       currentPayloadType = saved.payloadTab;
     }
+    if (saved.leftCollapsed) {
+      appEl.classList.add('left-collapsed');
+    }
+    if (saved.rightCollapsed) {
+      appEl.classList.add('right-collapsed');
+    }
   }
 
   // 2) 初始化终端
@@ -1186,6 +1288,8 @@ async function syncFromBackend() {
 
   // 5) 初始化按钮状态
   updateToggleButton();
+  updateSidebarToggleButtons();
+  fitTerminalSoon();
 })();
 </script>
 </body>
